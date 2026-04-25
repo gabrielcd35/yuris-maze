@@ -563,6 +563,11 @@
     <div id="hud">
       <div class="hud-item">
         <span class="hud-label">👦  YURI</span>
+        &nbsp;<span id="lives-val">❤️❤️❤️</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">⚡  PHASE:</span>
+        <span id="phase-val" style="color:#ff8800;">1</span>
       </div>
       <div class="hud-item">
         <span class="hud-label">💣  BOMB:</span>
@@ -620,50 +625,68 @@ const ROWS = 13;
 const W = COLS * TILE;
 const H = ROWS * TILE;
 
-// Colors - Mario palette
-const C = {
-  sky:    '#5cc8ff',
-  ground: '#c8a050',
-  wall:   '#3a6030',   // green pipe color
-  wallHL: '#4a7840',
-  wallDK: '#1a4018',
-  brick:  '#c87830',
-  brickDK:'#8b4820',
-  softBox:'#d4a020',   // destructible
-  softBoxDK:'#a07010',
-  floor:  '#7acc30',   // grass
-  floorDK:'#4a8818',
-  path:   '#c8e890',   // light grass path
-  exit:   '#ffd000',
-  exitGlow:'#ff8000',
-  player: '#ff3820',
-  playerHat:'#1a1060',
-  enemy:  '#9030c0',
-  enemyHL:'#cc60ff',
-  bomb:   '#222',
-  bombHL: '#555',
-  fire:   '#ff6000',
-  fireHL: '#ffcc00',
-  hud:    '#1a1060',
-  star:   '#ffd000',
+// ===== PHASE THEMES =====
+const THEMES = {
+  1: {
+    bgTop: '#3a88cc', bgBot: '#88cc44',
+    wall: '#3a6030', wallHL: '#5a9050', wallDK: '#1a4018',
+    path: '#c8e890', pathDot: 'rgba(60,140,20,0.3)',
+    softBox: '#d4a020', softBoxDK: '#a07010',
+    enemy: '#9030c0', enemyHL: '#cc60ff',
+  },
+  2: {
+    bgTop: '#0a0818', bgBot: '#1a1030',
+    wall: '#445566', wallHL: '#7788aa', wallDK: '#1a2233',
+    path: '#2a1a0a', pathDot: 'rgba(100,70,30,0.4)',
+    softBox: '#7a4a18', softBoxDK: '#4a2a08',
+    enemy: '#cc4400', enemyHL: '#ff8844',
+  }
 };
 
-// ===== MAZE LAYOUT =====
-// W=wall, B=breakable box, .=empty, S=start, E=exit, M=enemy
-const MAP_TEMPLATE = [
-  'WWWWWWWWWWWWWWWWW',
-  'WS..B...B...B..EW',
-  'W.W.W.WBW.W.W.W.W',
-  'W...B.....B...B.W',
-  'W.W.W.W.W.W.W.W.W',
-  'WB..B..B..B..B..W',
-  'W.W.W.W.W.W.W.W.W',
-  'W..B....B....B..W',
-  'W.W.W.WBW.W.W.W.W',
-  'W.B.B.....B.B.B.W',
-  'W.W.W.W.W.W.W.W.W',
-  'W...B.M.....B...W',
-  'WWWWWWWWWWWWWWWWW',
+// Shared colors
+const C = {
+  player: '#ff3820', playerHat: '#1a1060',
+  bomb: '#222', bombHL: '#555',
+  fire: '#ff6000', fireHL: '#ffcc00',
+  rock: '#887755', rockHL: '#aa9977', rockDK: '#554433',
+  gorilla: '#553311', gorillaHL: '#7a4a22',
+};
+
+// ===== MAP DEFINITIONS =====
+// W=wall B=breakable R=rock(indestructible) .=path S=start E=exit M=enemy G=fast-gorilla
+const MAPS = [
+  // Phase 1 - Jungle maze
+  [
+    'WWWWWWWWWWWWWWWWW',
+    'WS..B...B...B..EW',
+    'W.W.W.WBW.W.W.W.W',
+    'W...B.....B...B.W',
+    'W.W.W.W.W.W.W.W.W',
+    'WB..B..B..B..B..W',
+    'W.W.W.W.W.W.W.W.W',
+    'W..B....B....B..W',
+    'W.W.W.WBW.W.W.W.W',
+    'W.B.B.....B.B.B.W',
+    'W.W.W.W.W.W.W.W.W',
+    'W...B.M.....B...W',
+    'WWWWWWWWWWWWWWWWW',
+  ],
+  // Phase 2 - DK3 Construction Zone: rocks narrow paths, gorillas hunt you
+  [
+    'WWWWWWWWWWWWWWWWW',
+    'WS.RB..MB..B.R.EW',
+    'W.W.W.WBW.W.W.W.W',
+    'W.R.B.....B.R.B.W',
+    'W.W.W.W.W.W.W.W.W',
+    'WB.RB.MB..B.RB..W',
+    'W.W.W.W.W.W.W.W.W',
+    'W.RB..GB...RBR.BW',
+    'W.W.W.WBW.W.W.W.W',
+    'W.B.R.M...R.B.G.W',
+    'W.W.W.W.W.W.W.W.W',
+    'WR.B.MB....MB.RGW',
+    'WWWWWWWWWWWWWWWWW',
+  ]
 ];
 
 // ===== STATE =====
@@ -671,7 +694,10 @@ let map, player, enemies, bombs, explosions, score, gameOver, won;
 let bombTimer = 0, bombCooldown = 3000;
 let lastTime = 0;
 let playerMoveTimer = 0;
-const PLAYER_SPEED = 180; // ms per tile move
+const PLAYER_SPEED = 180;
+let lives = 3;
+let currentPhase = 1;
+let scorePopups = [];
 
 // ===== CANVAS SETUP =====
 const canvas = document.getElementById('gameCanvas');
@@ -689,18 +715,28 @@ function resizeCanvas() {
 }
 
 // ===== INIT =====
-function initGame() {
-  map = MAP_TEMPLATE.map(row => row.split(''));
-  player = null; enemies = []; bombs = []; explosions = [];
+function initGame(phase) {
+  currentPhase = phase || 1;
+  const tmpl = MAPS[currentPhase - 1];
+  map = tmpl.map(row => row.split(''));
+  player = null; enemies = []; bombs = []; explosions = []; scorePopups = [];
   score = 0; gameOver = false; won = false;
-  bombTimer = bombCooldown; // start with bomb ready
+  bombTimer = bombCooldown;
   playerMoveTimer = 0;
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const t = map[r][c];
-      if (t === 'S') { player = { r, c, dr: 0, dc: 0, alive: true, animFrame: 0, animTimer: 0 }; map[r][c] = '.'; }
-      else if (t === 'M') { enemies.push({ r, c, dr: 0, dc: 0, alive: true, moveTimer: 0, moveSpeed: 700, animFrame: 0 }); map[r][c] = '.'; }
+      if (t === 'S') {
+        player = { r, c, alive: true, facing: 1 };
+        map[r][c] = '.';
+      } else if (t === 'M') {
+        enemies.push({ r, c, alive: true, moveTimer: 0, moveSpeed: currentPhase === 2 ? 480 : 700, type: 'goomba' });
+        map[r][c] = '.';
+      } else if (t === 'G') {
+        enemies.push({ r, c, alive: true, moveTimer: 0, moveSpeed: 280, type: 'gorilla' });
+        map[r][c] = '.';
+      }
     }
   }
   updateHUD();
@@ -708,6 +744,8 @@ function initGame() {
 
 function updateHUD() {
   document.getElementById('score-val').textContent = score;
+  document.getElementById('lives-val').textContent = '❤️'.repeat(Math.max(0, lives));
+  document.getElementById('phase-val').textContent = currentPhase;
   const pct = Math.min(100, (bombTimer / bombCooldown) * 100);
   document.getElementById('bomb-bar').style.width = pct + '%';
   const hasBomb = bombTimer >= bombCooldown;
@@ -717,65 +755,168 @@ function updateHUD() {
 }
 
 // ===== DRAWING =====
+function th() { return THEMES[currentPhase] || THEMES[1]; }
+
+function drawBackground() {
+  const t = th();
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, t.bgTop);
+  grd.addColorStop(1, t.bgBot);
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+
+  if (currentPhase === 2) {
+    // DK3: steel scaffolding beams in background
+    ctx.strokeStyle = 'rgba(80,100,140,0.25)';
+    ctx.lineWidth = 8;
+    for (let i = 1; i < 4; i++) {
+      ctx.beginPath(); ctx.moveTo(0, i*(H/4)); ctx.lineTo(W, i*(H/4)); ctx.stroke();
+    }
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(80,100,140,0.12)';
+    for (let i = 1; i < 5; i++) {
+      ctx.beginPath(); ctx.moveTo(i*(W/5), 0); ctx.lineTo(i*(W/5), H); ctx.stroke();
+    }
+  } else {
+    // Phase 1: puffy clouds
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    [[80,50,22],[105,42,18],[57,45,16],[W-80,60,22],[W-55,52,18],[W-108,58,15]].forEach(([cx,cy,r]) => {
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+    });
+  }
+}
+
+function drawWallTile(x, y) {
+  const t = th();
+  if (currentPhase === 2) {
+    // Steel girder with rivets
+    ctx.fillStyle = t.wall;
+    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillStyle = t.wallHL;
+    ctx.fillRect(x, y, TILE, 7);
+    ctx.fillRect(x, y+TILE-7, TILE, 7);
+    ctx.fillStyle = t.wallDK;
+    ctx.fillRect(x+TILE-5, y, 5, TILE);
+    ctx.fillRect(x, y+TILE-5, TILE, 5);
+    // Rivets
+    ctx.fillStyle = t.wallHL;
+    [[x+5,y+3],[x+TILE-10,y+3],[x+5,y+TILE-8],[x+TILE-10,y+TILE-8]].forEach(([rx,ry]) => {
+      ctx.beginPath(); ctx.arc(rx+2, ry+2, 3, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.strokeStyle = t.wallDK;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x+0.5, y+0.5, TILE-1, TILE-1);
+  } else {
+    // Green pipe wall
+    ctx.fillStyle = t.wall;
+    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillStyle = t.wallHL;
+    ctx.fillRect(x, y, 6, TILE);
+    ctx.fillStyle = t.wallDK;
+    ctx.fillRect(x+TILE-6, y, 6, TILE);
+    ctx.fillRect(x, y+TILE-6, TILE, 6);
+    ctx.strokeStyle = t.wallDK;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x+0.5, y+0.5, TILE-1, TILE-1);
+  }
+}
+
+function drawRockTile(x, y) {
+  // Stone boulder - grey-brown, can't be destroyed
+  ctx.fillStyle = C.rock;
+  ctx.fillRect(x+3, y+5, TILE-6, TILE-8);
+  ctx.fillStyle = C.rockHL;
+  ctx.fillRect(x+5, y+7, TILE-18, 9);
+  ctx.fillRect(x+7, y+7, 7, 16);
+  ctx.fillStyle = C.rockDK;
+  ctx.fillRect(x+TILE-9, y+TILE-11, 6, 7);
+  ctx.fillRect(x+3, y+TILE-9, TILE-6, 5);
+  // Crack
+  ctx.strokeStyle = C.rockDK;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x+15, y+9); ctx.lineTo(x+20, y+18); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x+TILE-15, y+13); ctx.lineTo(x+TILE-10, y+24); ctx.stroke();
+  ctx.strokeStyle = '#443322';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x+3, y+5, TILE-6, TILE-8);
+}
+
+function drawSoftBoxTile(x, y) {
+  const t = th();
+  if (currentPhase === 2) {
+    // Wooden crate
+    ctx.fillStyle = '#8b5e2a';
+    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillStyle = '#a07040';
+    ctx.fillRect(x+3, y+3, TILE-6, 9);
+    ctx.fillRect(x+3, y+TILE-12, TILE-6, 9);
+    ctx.fillRect(x+3, y+3, 9, TILE-6);
+    ctx.fillRect(x+TILE-12, y+3, 9, TILE-6);
+    ctx.fillStyle = '#6b4a1a';
+    ctx.fillRect(x+TILE/2-2, y+5, 4, TILE-10);
+    ctx.fillRect(x+5, y+TILE/2-2, TILE-10, 4);
+    ctx.fillStyle = '#4a2a08';
+    ctx.fillRect(x, y, TILE, 3); ctx.fillRect(x, y, 3, TILE);
+    ctx.fillRect(x+TILE-3, y, 3, TILE); ctx.fillRect(x, y+TILE-3, TILE, 3);
+  } else {
+    // Question brick
+    ctx.fillStyle = t.softBox;
+    ctx.fillRect(x, y, TILE, TILE);
+    ctx.fillStyle = t.softBoxDK;
+    ctx.fillRect(x, y, TILE, 4); ctx.fillRect(x, y, 4, TILE);
+    ctx.fillRect(x+TILE-4, y, 4, TILE); ctx.fillRect(x, y+TILE-4, TILE, 4);
+    ctx.fillStyle = '#1a1060';
+    ctx.font = `bold ${TILE*0.55}px 'Press Start 2P', monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', x+TILE/2, y+TILE/2+2);
+  }
+}
+
+function drawPathTile(x, y, r, c) {
+  const t = th();
+  ctx.fillStyle = t.path;
+  ctx.fillRect(x, y, TILE, TILE);
+  if (currentPhase === 2) {
+    // Steel floor plates with seams
+    ctx.fillStyle = 'rgba(255,220,160,0.06)';
+    ctx.fillRect(x+2, y+2, TILE-4, TILE-4);
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x+0.5, y+0.5, TILE-1, TILE-1);
+  } else {
+    // Grass dots
+    ctx.fillStyle = t.pathDot;
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(x+8+((r*7+c*13+i*17)%26), y+8+((r*11+c*7+i*23)%26), 3, 3);
+    }
+  }
+}
+
+function drawExitTile(x, y) {
+  const t = th();
+  ctx.fillStyle = currentPhase === 2 ? '#150d30' : t.path;
+  ctx.fillRect(x, y, TILE, TILE);
+  const grd = ctx.createRadialGradient(x+TILE/2, y+TILE/2, 2, x+TILE/2, y+TILE/2, TILE/2);
+  grd.addColorStop(0, 'rgba(255,208,0,0.9)');
+  grd.addColorStop(1, 'rgba(255,128,0,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(x, y, TILE, TILE);
+  const bob = Math.sin(Date.now()/300) * 3;
+  ctx.font = `${TILE*0.65}px serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(currentPhase === 2 ? '🏆' : '⭐', x+TILE/2, y+TILE/2+bob);
+}
+
 function drawTile(r, c) {
   const x = c * TILE, y = r * TILE;
   const t = map[r][c];
-
-  if (t === 'W') {
-    // Green pipe-style wall
-    ctx.fillStyle = C.wall;
-    ctx.fillRect(x, y, TILE, TILE);
-    // Highlight left edge
-    ctx.fillStyle = C.wallHL;
-    ctx.fillRect(x, y, 6, TILE);
-    // Dark right/bottom
-    ctx.fillStyle = C.wallDK;
-    ctx.fillRect(x+TILE-6, y, 6, TILE);
-    ctx.fillRect(x, y+TILE-6, TILE, 6);
-    // Grid line
-    ctx.strokeStyle = C.wallDK;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x+0.5, y+0.5, TILE-1, TILE-1);
-  } else if (t === 'B') {
-    // Breakable box - brick style
-    ctx.fillStyle = C.softBox;
-    ctx.fillRect(x, y, TILE, TILE);
-    ctx.fillStyle = C.softBoxDK;
-    ctx.fillRect(x, y, TILE, 4);
-    ctx.fillRect(x, y, 4, TILE);
-    ctx.fillRect(x+TILE-4, y, 4, TILE);
-    ctx.fillRect(x, y+TILE-4, TILE, 4);
-    // Question mark
-    ctx.fillStyle = '#1a1060';
-    ctx.font = `bold ${TILE*0.55}px 'Press Start 2P', monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('?', x + TILE/2, y + TILE/2 + 2);
-  } else if (t === 'E') {
-    // Exit - glowing star portal
-    ctx.fillStyle = C.path;
-    ctx.fillRect(x, y, TILE, TILE);
-    const grd = ctx.createRadialGradient(x+TILE/2, y+TILE/2, 2, x+TILE/2, y+TILE/2, TILE/2);
-    grd.addColorStop(0, 'rgba(255,208,0,0.9)');
-    grd.addColorStop(1, 'rgba(255,128,0,0)');
-    ctx.fillStyle = grd;
-    ctx.fillRect(x, y, TILE, TILE);
-    ctx.font = `${TILE*0.7}px serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('⭐ ', x+TILE/2, y+TILE/2);
-  } else {
-    // Floor / path
-    ctx.fillStyle = C.path;
-    ctx.fillRect(x, y, TILE, TILE);
-    // Subtle grass texture dots
-    ctx.fillStyle = 'rgba(100,180,50,0.25)';
-    for (let i = 0; i < 3; i++) {
-      const gx = x + 8 + ((r*7+c*13+i*17)%26);
-      const gy = y + 8 + ((r*11+c*7+i*23)%26);
-      ctx.fillRect(gx, gy, 3, 3);
-    }
-  }
+  if (t === 'W') drawWallTile(x, y);
+  else if (t === 'B') drawSoftBoxTile(x, y);
+  else if (t === 'R') drawRockTile(x, y);
+  else if (t === 'E') drawExitTile(x, y);
+  else drawPathTile(x, y, r, c);
 }
 
 function drawPlayer() {
@@ -783,63 +924,136 @@ function drawPlayer() {
   const x = player.c * TILE + TILE/2;
   const y = player.r * TILE + TILE/2;
   const s = TILE * 0.42;
+  const f = player.facing || 1;
 
-  // Body
+  ctx.save();
+  ctx.translate(x, y);
+  if (f < 0) ctx.scale(-1, 1);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath(); ctx.ellipse(0, s+5, s*0.75, s*0.28, 0, 0, Math.PI*2); ctx.fill();
+
+  // Overalls
+  ctx.fillStyle = '#1a40cc';
+  ctx.fillRect(-s*0.52, s*0.08, s*1.04, s*0.85);
+
+  // Red shirt / body
   ctx.fillStyle = C.player;
-  ctx.beginPath();
-  ctx.arc(x, y+4, s, 0, Math.PI*2);
-  ctx.fill();
-  // Hat
+  ctx.beginPath(); ctx.arc(0, 0, s, 0, Math.PI*2); ctx.fill();
+
+  // Hat brim
   ctx.fillStyle = C.playerHat;
-  ctx.fillRect(x-s*0.9, y-s*0.1, s*1.8, s*0.5);
-  ctx.fillRect(x-s*0.6, y-s*0.7, s*1.2, s*0.65);
-  // Eyes
-  ctx.fillStyle = 'white';
-  ctx.fillRect(x-s*0.35, y+s*0.0, s*0.3, s*0.35);
-  ctx.fillRect(x+s*0.05, y+s*0.0, s*0.3, s*0.35);
+  ctx.fillRect(-s*0.92, -s*0.08, s*1.84, s*0.24);
+  // Hat top
+  ctx.fillRect(-s*0.6, -s*0.72, s*1.2, s*0.68);
+  // Hat 'M' badge
+  ctx.fillStyle = '#ff3820';
+  ctx.fillRect(-s*0.15, -s*0.65, s*0.3, s*0.22);
+
+  // Face
+  ctx.fillStyle = '#f0c080';
+  ctx.fillRect(-s*0.45, -s*0.14, s*0.9, s*0.52);
+
+  // Eye
   ctx.fillStyle = '#222';
-  ctx.fillRect(x-s*0.25, y+s*0.05, s*0.15, s*0.2);
-  ctx.fillRect(x+s*0.12, y+s*0.05, s*0.15, s*0.2);
+  ctx.fillRect(s*0.02, -s*0.08, s*0.24, s*0.24);
+  ctx.fillStyle = 'white';
+  ctx.fillRect(s*0.04, -s*0.06, s*0.1, s*0.1);
+
+  // Nose
+  ctx.fillStyle = '#d08040';
+  ctx.fillRect(-s*0.08, s*0.1, s*0.2, s*0.14);
+
   // Mustache
   ctx.fillStyle = '#5c2010';
-  ctx.fillRect(x-s*0.45, y+s*0.38, s*0.9, s*0.18);
-  // Overalls strap
-  ctx.fillStyle = '#1a30c0';
-  ctx.fillRect(x-s*0.2, y+s*0.55, s*0.18, s*0.5);
-  ctx.fillRect(x+s*0.02, y+s*0.55, s*0.18, s*0.5);
+  ctx.fillRect(-s*0.48, s*0.22, s*1.0, s*0.18);
+
+  // Overalls buttons
+  ctx.fillStyle = '#ffd000';
+  ctx.fillRect(-s*0.18, s*0.12, s*0.14, s*0.14);
+  ctx.fillRect(s*0.04, s*0.12, s*0.14, s*0.14);
+
+  // Shoes
+  ctx.fillStyle = '#331100';
+  ctx.fillRect(-s*0.58, s*0.82, s*0.54, s*0.32);
+  ctx.fillRect(s*0.04, s*0.82, s*0.54, s*0.32);
+
+  ctx.restore();
 }
 
 function drawEnemy(e) {
   if (!e.alive) return;
   const x = e.c * TILE + TILE/2;
   const y = e.r * TILE + TILE/2;
-  const s = TILE * 0.4;
-  // Goomba-ish body
-  ctx.fillStyle = C.enemy;
-  ctx.beginPath();
-  ctx.arc(x, y, s, 0, Math.PI*2);
-  ctx.fill();
-  ctx.fillStyle = C.enemyHL;
-  ctx.beginPath();
-  ctx.arc(x-s*0.2, y-s*0.3, s*0.3, 0, Math.PI*2);
-  ctx.fill();
-  // Eyes
-  ctx.fillStyle = 'white';
-  ctx.fillRect(x-s*0.4, y-s*0.2, s*0.28, s*0.28);
-  ctx.fillRect(x+s*0.12, y-s*0.2, s*0.28, s*0.28);
-  ctx.fillStyle = 'red';
-  ctx.fillRect(x-s*0.32, y-s*0.15, s*0.15, s*0.15);
-  ctx.fillRect(x+s*0.18, y-s*0.15, s*0.15, s*0.15);
-  // Mouth
-  ctx.strokeStyle = '#ff0000';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(x, y+s*0.1, s*0.3, 0.1, Math.PI-0.1);
-  ctx.stroke();
-  // Feet
-  ctx.fillStyle = '#1a1060';
-  ctx.fillRect(x-s*0.5, y+s*0.7, s*0.4, s*0.35);
-  ctx.fillRect(x+s*0.1, y+s*0.7, s*0.4, s*0.35);
+  const t = th();
+
+  if (e.type === 'gorilla') {
+    const s = TILE * 0.38;
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(x, y+s+4, s*0.8, s*0.26, 0, 0, Math.PI*2); ctx.fill();
+    // Body
+    ctx.fillStyle = C.gorilla;
+    ctx.beginPath(); ctx.arc(x, y, s, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = C.gorillaHL;
+    ctx.beginPath(); ctx.arc(x-s*0.2, y-s*0.25, s*0.32, 0, Math.PI*2); ctx.fill();
+    // Face plate
+    ctx.fillStyle = '#cc9966';
+    ctx.fillRect(x-s*0.5, y-s*0.18, s*1.0, s*0.65);
+    // Angry eyes
+    ctx.fillStyle = 'red';
+    ctx.fillRect(x-s*0.44, y-s*0.14, s*0.3, s*0.24);
+    ctx.fillRect(x+s*0.12, y-s*0.14, s*0.3, s*0.24);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x-s*0.36, y-s*0.1, s*0.14, s*0.14);
+    ctx.fillRect(x+s*0.2, y-s*0.1, s*0.14, s*0.14);
+    // Angry brows
+    ctx.fillStyle = '#221100';
+    ctx.fillRect(x-s*0.48, y-s*0.3, s*0.36, s*0.1);
+    ctx.fillRect(x+s*0.1, y-s*0.28, s*0.36, s*0.1);
+    // Teeth
+    ctx.fillStyle = 'white';
+    ctx.fillRect(x-s*0.26, y+s*0.24, s*0.2, s*0.22);
+    ctx.fillRect(x+s*0.06, y+s*0.24, s*0.2, s*0.22);
+    // Arms
+    ctx.fillStyle = C.gorilla;
+    ctx.fillRect(x-s*1.1, y-s*0.12, s*0.55, s*0.38);
+    ctx.fillRect(x+s*0.55, y-s*0.12, s*0.55, s*0.38);
+    ctx.fillStyle = C.gorillaHL;
+    ctx.beginPath(); ctx.arc(x-s*0.9, y+s*0.26, s*0.24, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x+s*0.9, y+s*0.26, s*0.24, 0, Math.PI*2); ctx.fill();
+    // Feet
+    ctx.fillStyle = '#221100';
+    ctx.fillRect(x-s*0.5, y+s*0.72, s*0.42, s*0.35);
+    ctx.fillRect(x+s*0.1, y+s*0.72, s*0.42, s*0.35);
+  } else {
+    const s = TILE * 0.4;
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath(); ctx.ellipse(x, y+s+2, s*0.75, s*0.24, 0, 0, Math.PI*2); ctx.fill();
+    // Body
+    ctx.fillStyle = t.enemy;
+    ctx.beginPath(); ctx.arc(x, y, s, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = t.enemyHL;
+    ctx.beginPath(); ctx.arc(x-s*0.22, y-s*0.3, s*0.3, 0, Math.PI*2); ctx.fill();
+    // Eyes
+    ctx.fillStyle = 'white';
+    ctx.fillRect(x-s*0.4, y-s*0.22, s*0.28, s*0.28);
+    ctx.fillRect(x+s*0.12, y-s*0.22, s*0.28, s*0.28);
+    ctx.fillStyle = 'red';
+    ctx.fillRect(x-s*0.32, y-s*0.16, s*0.15, s*0.15);
+    ctx.fillRect(x+s*0.18, y-s*0.16, s*0.15, s*0.15);
+    // Angry mouth
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y+s*0.12, s*0.3, 0.1, Math.PI-0.1); ctx.stroke();
+    // Walking feet animation
+    const bob = Math.sin(Date.now()/180 + e.r*3 + e.c) > 0;
+    ctx.fillStyle = '#1a1060';
+    ctx.fillRect(x+(bob?-s*0.5:-s*0.4), y+s*0.7, s*0.4, s*0.35);
+    ctx.fillRect(x+(bob?s*0.1:s*0.0), y+s*0.7, s*0.4, s*0.35);
+  }
 }
 
 function drawBomb(b) {
@@ -847,15 +1061,16 @@ function drawBomb(b) {
   const y = b.r * TILE + TILE/2;
   const s = TILE * 0.35;
   const pulse = 0.9 + 0.1*Math.sin(Date.now()/100);
-  // Bomb body
+  const pct = b.timer / b.maxTimer;
+  // Danger glow when close to exploding
+  if (pct < 0.4) {
+    ctx.fillStyle = `rgba(255,50,0,${(1-pct*2.5)*0.25})`;
+    ctx.beginPath(); ctx.arc(x, y+4, s*2.8, 0, Math.PI*2); ctx.fill();
+  }
   ctx.fillStyle = C.bomb;
-  ctx.beginPath();
-  ctx.arc(x, y+4, s*pulse, 0, Math.PI*2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y+4, s*pulse, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = C.bombHL;
-  ctx.beginPath();
-  ctx.arc(x-s*0.25, y-s*0.25+4, s*0.35, 0, Math.PI*2);
-  ctx.fill();
+  ctx.beginPath(); ctx.arc(x-s*0.25, y-s*0.25+4, s*0.35, 0, Math.PI*2); ctx.fill();
   // Fuse
   ctx.strokeStyle = '#885500';
   ctx.lineWidth = 3;
@@ -864,12 +1079,11 @@ function drawBomb(b) {
   ctx.quadraticCurveTo(x+s*0.7, y-s, x+s*0.4, y-s*1.3+4);
   ctx.stroke();
   // Spark
-  ctx.fillStyle = '#ffcc00';
-  ctx.beginPath();
-  ctx.arc(x+s*0.4, y-s*1.3+4, 4*pulse, 0, Math.PI*2);
-  ctx.fill();
+  ctx.fillStyle = pct > 0.5 ? '#ffcc00' : '#ff4400';
+  ctx.beginPath(); ctx.arc(x+s*0.4, y-s*1.3+4, 4*pulse, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.arc(x+s*0.4, y-s*1.3+4, 2*pulse, 0, Math.PI*2); ctx.fill();
   // Timer arc
-  const pct = b.timer / b.maxTimer;
   ctx.strokeStyle = pct > 0.5 ? '#ffcc00' : '#ff2200';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -879,45 +1093,51 @@ function drawBomb(b) {
 
 function drawExplosion(ex) {
   const alpha = ex.life / ex.maxLife;
-  ex.tiles.forEach(([r,c,type]) => {
+  ex.tiles.forEach(([r,c]) => {
     const x = c*TILE, y = r*TILE;
-    // Center glow
-    const grd = ctx.createRadialGradient(x+TILE/2, y+TILE/2, 0, x+TILE/2, y+TILE/2, TILE*0.7);
-    grd.addColorStop(0, `rgba(255,255,100,${alpha})`);
-    grd.addColorStop(0.4, `rgba(255,140,0,${alpha*0.9})`);
+    const grd = ctx.createRadialGradient(x+TILE/2, y+TILE/2, 0, x+TILE/2, y+TILE/2, TILE*0.8);
+    grd.addColorStop(0, `rgba(255,255,160,${alpha})`);
+    grd.addColorStop(0.3, `rgba(255,160,0,${alpha*0.95})`);
+    grd.addColorStop(0.7, `rgba(255,60,0,${alpha*0.6})`);
     grd.addColorStop(1, `rgba(255,50,0,0)`);
     ctx.fillStyle = grd;
     ctx.fillRect(x, y, TILE, TILE);
-    // Cross shape
-    ctx.fillStyle = `rgba(255,220,50,${alpha*0.8})`;
-    const m = TILE*0.15;
+    ctx.fillStyle = `rgba(255,230,60,${alpha*0.7})`;
+    const m = TILE*0.18;
     ctx.fillRect(x+m, y, TILE-m*2, TILE);
     ctx.fillRect(x, y+m, TILE, TILE-m*2);
   });
 }
 
+function drawScorePopups() {
+  scorePopups.forEach(p => {
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color || '#ffd000';
+    ctx.font = `bold 13px 'Press Start 2P', monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.text, p.x, p.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
 function draw() {
   ctx.clearRect(0, 0, W, H);
-  // Draw tiles
+  drawBackground();
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
       drawTile(r, c);
-  // Explosions behind everything
   explosions.forEach(drawExplosion);
-  // Bombs
   bombs.forEach(drawBomb);
-  // Enemies
   enemies.forEach(drawEnemy);
-  // Player
   drawPlayer();
+  drawScorePopups();
 }
 
 // ===== GAMEPLAY =====
 function canMove(r, c) {
   if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
   const t = map[r][c];
-  if (t === 'W' || t === 'B') return false;
-  // Can't walk into a bomb
+  if (t === 'W' || t === 'B' || t === 'R') return false;
   if (bombs.some(b => b.r === r && b.c === c)) return false;
   return true;
 }
@@ -927,56 +1147,89 @@ function placeBomb() {
   if (bombTimer < bombCooldown) return;
   if (bombs.some(b => b.r === player.r && b.c === player.c)) return;
   bombTimer = 0;
-  const b = { r: player.r, c: player.c, timer: 2200, maxTimer: 2200 };
-  bombs.push(b);
+  bombs.push({ r: player.r, c: player.c, timer: 2200, maxTimer: 2200 });
 }
 
 function explodeBomb(b) {
-  const tiles = [];
-  const radius = 2;
-  tiles.push([b.r, b.c, 'center']);
-  const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
-  dirs.forEach(([dr,dc]) => {
-    for (let i = 1; i <= radius; i++) {
-      const nr = b.r + dr*i, nc = b.c + dc*i;
-      if (nr < 0||nr>=ROWS||nc<0||nc>=COLS) break;
-      if (map[nr][nc] === 'W') break;
+  const tiles = [[b.r, b.c, 'center']];
+  [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dr,dc]) => {
+    for (let i = 1; i <= 2; i++) {
+      const nr = b.r+dr*i, nc = b.c+dc*i;
+      if (nr < 0||nr >= ROWS||nc < 0||nc >= COLS) break;
+      if (map[nr][nc] === 'W' || map[nr][nc] === 'R') break;
       tiles.push([nr, nc, 'arm']);
       if (map[nr][nc] === 'B') { map[nr][nc] = '.'; score += 10; break; }
     }
   });
   explosions.push({ tiles, life: 700, maxLife: 700 });
-  // Check player
-  if (player && player.alive) {
+  if (player && player.alive)
     tiles.forEach(([r,c]) => { if (r===player.r && c===player.c) killPlayer(); });
-  }
-  // Check enemies
   enemies.forEach(e => {
-    if (e.alive) tiles.forEach(([r,c]) => { if (r===e.r && c===e.c) { e.alive=false; score+=100; } });
+    if (!e.alive) return;
+    tiles.forEach(([r,c]) => {
+      if (r===e.r && c===e.c) {
+        e.alive = false;
+        const pts = e.type === 'gorilla' ? 250 : 100;
+        score += pts;
+        scorePopups.push({ x: e.c*TILE+TILE/2, y: e.r*TILE+TILE/4, text: '+'+pts,
+          life: 900, maxLife: 900, color: e.type==='gorilla' ? '#ff8844' : '#ffd000' });
+        updateHUD();
+      }
+    });
   });
-  updateHUD();
 }
 
 function killPlayer() {
-  if (!player.alive) return;
+  if (!player || !player.alive) return;
   player.alive = false;
-  setTimeout(() => showOverlay(false), 600);
+  lives--;
+  updateHUD();
+  if (lives <= 0) {
+    setTimeout(() => showOverlay('lose'), 700);
+  } else {
+    setTimeout(() => {
+      const tmpl = MAPS[currentPhase - 1];
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (tmpl[r][c] === 'S') { player = { r, c, alive: true, facing: 1 }; return; }
+        }
+      }
+    }, 700);
+  }
 }
 
-function showOverlay(win) {
+function showOverlay(type) {
   const ov = document.getElementById('overlay');
   const title = document.getElementById('overlay-title');
   const msg = document.getElementById('overlay-msg');
+  const btn = document.getElementById('overlay-btn');
   ov.classList.add('show');
-  if (win) {
-    title.textContent = '🎉  YOU WIN!';
+  if (type === 'phase2') {
+    title.textContent = '⚡  PHASE 2!';
+    title.style.color = '#ff8800';
+    msg.textContent = 'THE GORILLAS ARE COMING!\nROCKS BLOCK YOUR PATH!';
+    btn.textContent = 'ENTER PHASE 2';
+    btn.onclick = () => { ov.classList.remove('show'); startPhase2(); };
+  } else if (type === 'win') {
+    title.textContent = '🏆  YOU WIN!';
     title.style.color = '#ffd000';
-    msg.textContent = `GREAT JOB YURI!\\nSCORE: ${score}`;
+    msg.textContent = 'AMAZING YURI!\nFINAL SCORE: ' + score;
+    btn.textContent = 'PLAY AGAIN';
+    btn.onclick = restartGame;
   } else {
     title.textContent = '💥  GAME OVER';
     title.style.color = '#ff3020';
-    msg.textContent = `SCORE: ${score}\\nTRY AGAIN!`;
+    msg.textContent = 'SCORE: ' + score + '\nTRY AGAIN!';
+    btn.textContent = 'PLAY AGAIN';
+    btn.onclick = restartGame;
   }
+}
+
+function startPhase2() {
+  lives = 3;
+  initGame(2);
+  lastTime = performance.now();
+  requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(gameLoop); });
 }
 
 function moveEnemies(dt) {
@@ -989,8 +1242,8 @@ function moveEnemies(dt) {
     // Try to move toward player or random
     let choices = dirs.filter(([dr,dc]) => canMove(e.r+dr, e.c+dc));
     if (choices.length === 0) return;
-    // Bias toward player
-    if (player && player.alive && Math.random() < 0.45) {
+    const chaseProb = e.type === 'gorilla' ? 0.75 : 0.45;
+    if (player && player.alive && Math.random() < chaseProb) {
       choices.sort((a,b) => {
         const da = Math.abs((e.r+a[0])-player.r)+Math.abs((e.c+a[1])-player.c);
         const db = Math.abs((e.r+b[0])-player.r)+Math.abs((e.c+b[1])-player.c);
@@ -1024,14 +1277,18 @@ function handlePlayerMove(dt) {
   let dr = 0, dc = 0;
   if (keys['ArrowUp'] || keys['KeyW']) dr = -1;
   else if (keys['ArrowDown'] || keys['KeyS']) dr = 1;
-  else if (keys['ArrowLeft'] || keys['KeyA']) dc = -1;
-  else if (keys['ArrowRight'] || keys['KeyD']) dc = 1;
+  else if (keys['ArrowLeft'] || keys['KeyA']) { dc = -1; player.facing = -1; }
+  else if (keys['ArrowRight'] || keys['KeyD']) { dc = 1; player.facing = 1; }
   else return;
   playerMoveTimer = 0;
   const nr = player.r + dr, nc = player.c + dc;
   if (canMove(nr, nc)) {
     player.r = nr; player.c = nc;
-    if (map[nr][nc] === 'E') { won = true; showOverlay(true); }
+    if (map[nr][nc] === 'E') {
+      won = true;
+      if (currentPhase === 1) setTimeout(() => showOverlay('phase2'), 400);
+      else setTimeout(() => showOverlay('win'), 400);
+    }
     enemies.forEach(e => { if (e.alive && e.r===nr && e.c===nc) killPlayer(); });
   }
 }
@@ -1050,14 +1307,13 @@ function gameLoop(ts) {
   bombs.filter(b => b.explode).forEach(b => explodeBomb(b));
   bombs = bombs.filter(b => !b.explode);
 
-  // Update explosions
   explosions.forEach(ex => ex.life -= dt);
   explosions = explosions.filter(ex => ex.life > 0);
 
-  // Move enemies
-  moveEnemies(dt);
+  scorePopups.forEach(p => { p.life -= dt; p.y -= 0.5; });
+  scorePopups = scorePopups.filter(p => p.life > 0);
 
-  // Move player
+  moveEnemies(dt);
   handlePlayerMove(dt);
 
   updateHUD();
@@ -1068,15 +1324,17 @@ function gameLoop(ts) {
 function startGame() {
   document.getElementById('title-screen').style.display = 'none';
   document.getElementById('game-screen').style.display = 'flex';
+  lives = 3;
   resizeCanvas();
-  initGame();
+  initGame(1);
   lastTime = performance.now();
   requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(gameLoop); });
 }
 
 function restartGame() {
   document.getElementById('overlay').classList.remove('show');
-  initGame();
+  lives = 3;
+  initGame(1);
   lastTime = performance.now();
   requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(gameLoop); });
 }
@@ -1092,7 +1350,6 @@ document.addEventListener('keydown', e => {
 });
 
 // Mobile: tap-to-move one tile at a time (no held keys  avoids gravity drift)
-let mobileMoveQueue = [];
 let lastMobileTap = 0;
 const MOBILE_TAP_THROTTLE = 160; // ms between taps
 
@@ -1101,11 +1358,16 @@ function mobileMove(dr, dc) {
   const now = Date.now();
   if (now - lastMobileTap < MOBILE_TAP_THROTTLE) return;
   lastMobileTap = now;
+  if (dc !== 0) player.facing = dc > 0 ? 1 : -1;
   const nr = player.r + dr, nc = player.c + dc;
   if (canMove(nr, nc)) {
     player.r = nr; player.c = nc;
     playerMoveTimer = 0;
-    if (map[nr][nc] === 'E') { won = true; showOverlay(true); }
+    if (map[nr][nc] === 'E') {
+      won = true;
+      if (currentPhase === 1) setTimeout(() => showOverlay('phase2'), 400);
+      else setTimeout(() => showOverlay('win'), 400);
+    }
     enemies.forEach(e => { if (e.alive && e.r===nr && e.c===nc) killPlayer(); });
   }
 }
