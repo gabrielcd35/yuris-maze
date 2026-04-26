@@ -618,6 +618,26 @@
 </div>
 
 <script>
+// ===== PLAYER SPRITE =====
+let yuriSprite = null;
+(function() {
+  const raw = new Image();
+  raw.onload = function() {
+    const oc = document.createElement('canvas');
+    oc.width = raw.width; oc.height = raw.height;
+    const ox = oc.getContext('2d');
+    ox.drawImage(raw, 0, 0);
+    const id = ox.getImageData(0, 0, oc.width, oc.height);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 210 && d[i+1] > 210 && d[i+2] > 210) d[i+3] = 0;
+    }
+    ox.putImageData(id, 0, 0);
+    yuriSprite = oc;
+  };
+  raw.src = 'yuri-player.png';
+})();
+
 // ===== CONSTANTS =====
 const TILE = 40;
 const COLS = 17;
@@ -921,65 +941,34 @@ function drawTile(r, c) {
 
 function drawPlayer() {
   if (!player || !player.alive) return;
-  const x = player.c * TILE + TILE/2;
-  const y = player.r * TILE + TILE/2;
-  const s = TILE * 0.42;
-  const f = player.facing || 1;
-
-  ctx.save();
-  ctx.translate(x, y);
-  if (f < 0) ctx.scale(-1, 1);
+  const cx = player.c * TILE + TILE / 2;
+  const by = player.r * TILE + TILE;      // bottom of tile
+  const dh = TILE * 2;                    // draw height: 2 tiles tall
+  const dw = dh * 0.52;                   // proportional width
+  const dx = cx - dw / 2;
+  const dy = by - dh;
 
   // Shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.28)';
-  ctx.beginPath(); ctx.ellipse(0, s+5, s*0.75, s*0.28, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(cx, by - 2, dw * 0.45, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Overalls
-  ctx.fillStyle = '#1a40cc';
-  ctx.fillRect(-s*0.52, s*0.08, s*1.04, s*0.85);
-
-  // Red shirt / body
-  ctx.fillStyle = C.player;
-  ctx.beginPath(); ctx.arc(0, 0, s, 0, Math.PI*2); ctx.fill();
-
-  // Hat brim
-  ctx.fillStyle = C.playerHat;
-  ctx.fillRect(-s*0.92, -s*0.08, s*1.84, s*0.24);
-  // Hat top
-  ctx.fillRect(-s*0.6, -s*0.72, s*1.2, s*0.68);
-  // Hat 'M' badge
-  ctx.fillStyle = '#ff3820';
-  ctx.fillRect(-s*0.15, -s*0.65, s*0.3, s*0.22);
-
-  // Face
-  ctx.fillStyle = '#f0c080';
-  ctx.fillRect(-s*0.45, -s*0.14, s*0.9, s*0.52);
-
-  // Eye
-  ctx.fillStyle = '#222';
-  ctx.fillRect(s*0.02, -s*0.08, s*0.24, s*0.24);
-  ctx.fillStyle = 'white';
-  ctx.fillRect(s*0.04, -s*0.06, s*0.1, s*0.1);
-
-  // Nose
-  ctx.fillStyle = '#d08040';
-  ctx.fillRect(-s*0.08, s*0.1, s*0.2, s*0.14);
-
-  // Mustache
-  ctx.fillStyle = '#5c2010';
-  ctx.fillRect(-s*0.48, s*0.22, s*1.0, s*0.18);
-
-  // Overalls buttons
-  ctx.fillStyle = '#ffd000';
-  ctx.fillRect(-s*0.18, s*0.12, s*0.14, s*0.14);
-  ctx.fillRect(s*0.04, s*0.12, s*0.14, s*0.14);
-
-  // Shoes
-  ctx.fillStyle = '#331100';
-  ctx.fillRect(-s*0.58, s*0.82, s*0.54, s*0.32);
-  ctx.fillRect(s*0.04, s*0.82, s*0.54, s*0.32);
-
-  ctx.restore();
+  if (yuriSprite) {
+    ctx.save();
+    if ((player.facing || 1) < 0) {
+      ctx.translate(cx * 2, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(yuriSprite, dx, dy, dw, dh);
+    ctx.restore();
+  } else {
+    // Fallback while image loads
+    ctx.fillStyle = C.player;
+    ctx.beginPath();
+    ctx.arc(cx, player.r * TILE + TILE / 2, TILE * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function drawEnemy(e) {
